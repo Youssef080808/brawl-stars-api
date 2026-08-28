@@ -6,7 +6,7 @@ Supercell's API only returns a snapshot: current trophies, and roughly the last 
 
 Built to be used by a [Telegram bot](https://github.com/Youssef080808/Telegram-py-bot), but usable on its own.
 
-**Status:** in development. Database layer done; poller and endpoints not yet built.
+**Status:** in development. Database layer and upstream API client done; battle parsing and endpoints not yet built.
 
 ## Planned endpoints
 
@@ -32,6 +32,8 @@ Three tables, defined in `db.py`: `players`, `battles`, and `snapshots`.
 
 `battles` is keyed on `(player_tag, battle_time)` — a player can only be in one battle at a given second. Since each poll returns an overlapping window of the same battles, this plus `INSERT OR IGNORE` makes re-polling safe.
 
+Battles come back in three different shapes depending on mode, and win, draw and loss are defined differently in each, so a normalised `outcome` is derived on insert. The raw `rank` and `result` are stored alongside it, so the rules can change without the underlying data being lost.
+
 ## Setup
 
 ```bash
@@ -44,6 +46,12 @@ python3 db.py          # creates the tables
 ```
 
 `BRAWL_API_KEY` is a Supercell developer key. Requests are routed through [RoyaleAPI's proxy](https://docs.royaleapi.com/proxy), since Supercell locks keys to whitelisted IPs and this runs on infrastructure whose IP can change.
+
+## Project structure
+
+- `config.py` — settings and secrets, read from the environment
+- `db.py` — schema and connection helper; run directly to create the tables
+- `poller.py` — fetches player profiles and battle logs from the upstream API
 
 ## Known limitations
 
