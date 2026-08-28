@@ -6,7 +6,7 @@ Supercell's API only returns a snapshot: current trophies, and roughly the last 
 
 Built to be used by a [Telegram bot](https://github.com/Youssef080808/Telegram-py-bot), but usable on its own.
 
-**Status:** in development. Database layer and upstream API client done; battle parsing and endpoints not yet built.
+**Status:** in development. Database, API client and battle parser done; storage and endpoints not yet built.
 
 ## Planned endpoints
 
@@ -32,7 +32,19 @@ Three tables, defined in `db.py`: `players`, `battles`, and `snapshots`.
 
 `battles` is keyed on `(player_tag, battle_time)` — a player can only be in one battle at a given second. Since each poll returns an overlapping window of the same battles, this plus `INSERT OR IGNORE` makes re-polling safe.
 
-Battles come back in three different shapes depending on mode, and win, draw and loss are defined differently in each, so a normalised `outcome` is derived on insert. The raw `rank` and `result` are stored alongside it, so the rules can change without the underlying data being lost.
+## Parsing
+
+Battles come back in three shapes, and the parser normalises all of them into one row format:
+
+| Variant | Players | Outcome field | `trophyChange` | `starPlayer` |
+|---|---|---|---|---|
+| Showdown | flat list | `rank` | present | absent |
+| 3v3 trophy | nested by team | `result` | present | present |
+| 3v3 competitive | nested by team | `result` | absent | present |
+
+Win, draw and loss mean different things per mode — top 4 wins a solo Showdown, top 2 wins a duo — so a normalised `outcome` is derived on insert. The raw `rank` and `result` are stored alongside it, so the rules can change without the underlying data being lost.
+
+Fields that are legitimately absent stay null rather than being defaulted, since the distinction matters: `star_player` is null in Showdown because the mode has no star player, which is not the same as the player not being it.
 
 ## Setup
 
@@ -52,6 +64,7 @@ python3 db.py          # creates the tables
 - `config.py` — settings and secrets, read from the environment
 - `db.py` — schema and connection helper; run directly to create the tables
 - `poller.py` — fetches player profiles and battle logs from the upstream API
+- `parser.py` — turns raw battle JSON into rows
 
 ## Known limitations
 
