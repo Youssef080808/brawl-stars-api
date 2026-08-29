@@ -1,5 +1,6 @@
 import sqlite3
 from config import DB_PATH # Where DB file lives
+import datetime as dt
 
 # Creates and returns configured connection
 def get_connection():
@@ -59,6 +60,79 @@ def db_init():
 """)
 
     conn.commit() # Commit created tables
+    conn.close()
+
+# Inserts trophy and ranked data for a player, current time is primary key so 
+# repolling is safe and ignored
+def insert_snapshot(tag, player_data):
+    conn = get_connection()
+    conn.execute("""
+        INSERT OR IGNORE INTO snapshots (
+            player_tag, taken_at, trophies, ranked_elo, rank_name, ranked_season_id, rank
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (
+        tag,
+        dt.datetime.now(dt.timezone.utc).isoformat(),
+        player_data.get("trophies"),
+        player_data.get("rankedElo"),
+        player_data.get("rankedRankName"),
+        player_data.get("rankedSeasonId"),
+        player_data.get("rankedRank")
+    ))
+    conn.commit()
+    conn.close()
+
+# Inserts parsed battles to TABLE battles, returns number of new battles added
+def insert_battles(rows):
+    if not rows:
+        return 0
+
+    conn = get_connection()
+    before = conn.total_changes
+    conn.executemany("""
+        INSERT OR IGNORE INTO battles (
+            player_tag, battle_time, mode, map, type, brawler, outcome, result, rank,
+            trophy_gain, star_player, duration, json
+        ) VALUES (
+            :player_tag, :battle_time, :mode, :map, :type, :brawler, :outcome, :result, :rank,
+            :trophy_gain, :star_player, :duration, :json
+        )
+""", rows)
+
+    conn.commit()
+    new_battles = conn.total_changes - before
+    conn.close()
+    return new_battles
+
+# Adds a player to start tracking
+def add_player(tag, name, chat_id=None):
+    conn = get_connection()
+    conn.execute("""
+    INSERT INTO players (tag, name, chat_id, added_at) VALUES (?, ?, ?, ?)
+    ON CONFLICT(tag) DO UPDATE SET name = excluded.name, chat_id = excluded.chat_id 
+    """, (tag, name, chat_id, dt.datetime.now(dt.timezone.utc).isoformat()))
+    conn.commit()
+    conn.close()
+
+# Removes a player to stop tracking
+def remove_player(tag):
+    conn = get_connection()
+    conn.execute("DELETE FROM players WHERE tag = ?", (tag,))
+    conn.commit()
+    conn.close()
+
+# Gets the players the poller should fetch
+def get_tracked_players():
+    conn = get_connection()
+    rows = conn.execute("SELECT tag, name, last_polled FROM players").fetchall()
+    conn.close()
+    return rows
+
+# Records that a player was polled
+def mark_polled(tag):
+    conn = get_connection()
+    conn.execute("UPDATE players SET last_polled = ? WHERE tag = ?", (dt.datetime.now(dt.timezone.utc).isoformat(), tag))
+    conn.commit()
     conn.close()
 
 # Runs db_init() when you run file directly
