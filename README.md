@@ -6,25 +6,37 @@ Supercell's API only returns a snapshot: current trophies, and roughly the last 
 
 Built to be used by a [Telegram bot](https://github.com/Youssef080808/Telegram-py-bot), but usable on its own.
 
-**Status:** in development. Database, API client and battle parser done; storage and endpoints not yet built.
+**Status:** in development. Collection works end to end — polling, parsing and storage. Endpoints are partly built.
 
-## Planned endpoints
+## Endpoints
+
+Working:
 
 ```
-POST   /players              Register a player for tracking
-DELETE /players/{tag}        Stop tracking
-GET    /players/{tag}        Current snapshot
+GET /health                  Liveness check
+GET /players/{tag}           Tracking info for a player
+GET /players/{tag}/record    Win/draw/loss counts, filtered
+```
+
+Planned:
+
+```
+POST   /players                  Register a player for tracking
+DELETE /players/{tag}            Stop tracking
 GET    /players/{tag}/trophies   Trophy and ranked elo history
 GET    /players/{tag}/battles    Stored battles, paginated
-GET    /players/{tag}/winrate    Win/draw/loss counts
 GET    /players/{tag}/brawlers   Per-brawler breakdown
 ```
 
-The last two take filters as query parameters — `last`, `mode`, `map`, `type`, `brawler`, `top`, `min_matches` — which combine, so one endpoint covers every question rather than needing one per combination:
+`record` and `brawlers` take filters as query parameters — `last`, `mode`, `map`, `type`, `brawler`, `top`, `min_matches` — which combine, so one endpoint covers every question rather than needing one per combination:
 
 ```
-GET /players/{tag}/brawlers?map=Hard Rock Mine&type=soloRanked&top=5
+GET /players/{tag}/record?mode=soloShowdown&brawler=WENDY&last=50
 ```
+
+`last` means the player's last N battles overall, then filtered — not the last N matching the filter. So narrow filters return small samples, which is why counts are returned rather than a percentage. The caller decides whether draws belong in the denominator.
+
+Tags are accepted with or without `#` and in any case, since `#` starts a URL fragment and never reaches the server.
 
 ## Data model
 
@@ -55,19 +67,25 @@ pip install -r requirements.txt
 
 export BRAWL_API_KEY="your_key_here"
 python3 db.py          # creates the tables
+python3 poller.py      # polls every tracked player once
+uvicorn api:app --reload
 ```
 
 `BRAWL_API_KEY` is a Supercell developer key. Requests are routed through [RoyaleAPI's proxy](https://docs.royaleapi.com/proxy), since Supercell locks keys to whitelisted IPs and this runs on infrastructure whose IP can change.
 
+The poller runs once and exits rather than looping, so scheduling stays outside the program — cron or a container schedule, rather than a sleep in the code.
+
 ## Project structure
 
 - `config.py` — settings and secrets, read from the environment
-- `db.py` — schema and connection helper; run directly to create the tables
-- `poller.py` — fetches player profiles and battle logs from the upstream API
+- `db.py` — schema, connection helper, and storage functions
+- `poller.py` — fetches from the upstream API and stores results
 - `parser.py` — turns raw battle JSON into rows
+- `api.py` — HTTP endpoints
 
 ## Known limitations
 
 - History only accumulates from when a player is registered; earlier matches are already gone upstream.
 - A player who plays more than ~25 matches between polls will have gaps.
-- Narrow filters can produce win rates over very few matches, so match counts are always returned alongside.
+- A poll that fails partway leaves a snapshot written but no battles, since the two are stored separately.
+- Narrow filters can produce records over very few matches, so counts are always returned alongside.
