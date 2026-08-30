@@ -79,4 +79,51 @@ def get_record(tag: str, last: int = Query(100, ge=1, le=1000), mode: str|None=N
         "total" : row["total"]
     }
 
+# Per brawler win/draw/loss breakdown over a player's recent battles
+@app.get("/players/{tag}/brawlers")
+def get_brawlers(tag: str, last: int = Query(100, ge=1, le=10000), 
+                 top: int = Query(5, ge=1, le=20),
+                 min_matches: int = Query(10, ge=1),
+                 mode: str | None = None, map: str | None = None,
+                 type: str | None = None 
+                 ):
+    tag = _normalise(tag)
+
+    conditions = []
+    params = []
+    if mode:
+        conditions.append("mode = ?")
+        params.append(mode)
+    if map:
+        conditions.append("map = ?")
+        params.append(map)
+    if type:
+        conditions.append("type = ?")
+        params.append(type)
+
+    where = " WHERE " + " AND ".join(conditions) if conditions else ""
+
+    conn = db.get_connection()
+    rows = conn.execute(f"""
+        SELECT
+            brawler,
+            SUM(outcome = 'win')  AS wins,
+            SUM(outcome = 'draw') AS draws,
+            SUM(outcome = 'loss') AS losses,
+            COUNT(*)              AS total
+            FROM (
+                SELECT * FROM battles
+                WHERE player_tag = ?
+                ORDER BY battle_time DESC
+                LIMIT ?
+            ){where}
+            GROUP BY brawler
+            HAVING total >= ?
+            ORDER BY CAST(wins AS FLOAT) / total DESC, total DESC
+            LIMIT ?
+""", [tag, last] + params + [min_matches, top]).fetchall()
+    conn.close()
+
+    return [dict(row) for row in rows]
+
 
