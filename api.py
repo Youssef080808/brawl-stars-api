@@ -17,12 +17,27 @@ def get_player(tag: str):
     row = conn.execute(
         "SELECT tag, name, added_at, last_polled FROM players WHERE tag = ?", (tag,)
         ).fetchone()
-    conn.close()
+    
 
     if row is None:
+        conn.close()
         raise HTTPException(status_code=404, detail="player not tracked")
     
-    return dict(row)
+    # Most recent reading, or None if the player has never been polled
+    snapshot = conn.execute("""
+        SELECT taken_at, trophies, ranked_elo, rank_name, ranked_season_id, rank
+        FROM snapshots
+        WHERE player_tag = ?
+        ORDER BY taken_at DESC
+        LIMIT 1
+    """, (tag,)).fetchone()
+
+    conn.close()
+
+    return {
+        **dict(row),
+        "latest": dict(snapshot) if snapshot else None,
+    }
 
 # Converts to correct form incase tag has no "#"
 def _normalise(tag):
@@ -125,5 +140,42 @@ def get_brawlers(tag: str, last: int = Query(100, ge=1, le=10000),
     conn.close()
 
     return [dict(row) for row in rows]
+
+# Trophy and ranked history for a player, most recent first
+@app.get("/players/{tag}/trophies")
+def get_trophies(tag: str, limit: int = Query(50, ge=1, le=1000)):
+    tag = _normalise(tag)
+
+    conn = db.get_connection()
+    rows = conn.execute("""
+        SELECT taken_at, trophies, ranked_elo, rank_name, ranked_season_id, rank
+        FROM snapshots WHERE player_tag = ?
+        ORDER BY taken_at DESC
+        LIMIT ?  
+    """, (tag, limit)).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+# Stored battles for a player, most recent first
+@app.get("/players/{tag}/battles")
+def get_battles(tag: str, limit: int = Query(25, ge=1, le=200), offset: int = Query(0, ge=0)):
+    tag = _normalise(tag)
+
+    conn = db.get_connection()
+    rows = conn.execute("""
+        SELECT battle_time, mode, map, type, brawler, outcome,
+               rank, trophy_gain, star_player, duration
+        FROM battles WHERE player_tag = ?
+        ORDER BY battle_time DESC
+        LIMIT ? OFFSET ? -- Offset used to pull through a long history without pulling all
+                         -- at once
+    """, (tag, limit, offset)).fetchall()
+    conn.close()
+
+    return [dict(row) for row in rows]
+@app.delete("/players/{tag}", status_code=204)
+def unsubscribe_player(tag: str):
+    tag = _normalise(tag)
+    db.remove_player(tag)
 
 

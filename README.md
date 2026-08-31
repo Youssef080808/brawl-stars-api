@@ -6,27 +6,23 @@ Supercell's API only returns a snapshot: current trophies, and roughly the last 
 
 Built to be used by a [Telegram bot](https://github.com/Youssef080808/Telegram-py-bot), but usable on its own.
 
-**Status:** in development. Collection works end to end — polling, parsing and storage. Endpoints are partly built.
+**Status:** in development. Collection works end to end, and all read endpoints are built. Registering a player still has to be done directly against the database.
 
 ## Endpoints
 
-Working:
-
 ```
-GET /health                  Liveness check
-GET /players/{tag}           Tracking info for a player
-GET /players/{tag}/record    Win/draw/loss counts, filtered
-```
-
-Planned:
-
-```
-POST   /players                  Register a player for tracking
-DELETE /players/{tag}            Stop tracking
+GET    /health                   Liveness check
+GET    /players/{tag}            Tracking info and latest snapshot
+GET    /players/{tag}/record     Win/draw/loss counts, filtered
+GET    /players/{tag}/brawlers   Per-brawler breakdown, ranked
 GET    /players/{tag}/trophies   Trophy and ranked elo history
 GET    /players/{tag}/battles    Stored battles, paginated
-GET    /players/{tag}/brawlers   Per-brawler breakdown
+DELETE /players/{tag}            Stop tracking
 ```
+
+Still to build: `POST /players`, to register a player for tracking.
+
+Interactive documentation is generated automatically at `/docs`.
 
 `record` and `brawlers` take filters as query parameters — `last`, `mode`, `map`, `type`, `brawler`, `top`, `min_matches` — which combine, so one endpoint covers every question rather than needing one per combination:
 
@@ -35,6 +31,8 @@ GET /players/{tag}/record?mode=soloShowdown&brawler=WENDY&last=50
 ```
 
 `last` means the player's last N battles overall, then filtered — not the last N matching the filter. So narrow filters return small samples, which is why counts are returned rather than a percentage. The caller decides whether draws belong in the denominator.
+
+`brawlers` sorts by win rate with match count as a tiebreak, and `min_matches` drops brawlers with too few games so a single lucky win doesn't top the list.
 
 Tags are accepted with or without `#` and in any case, since `#` starts a URL fragment and never reaches the server.
 
