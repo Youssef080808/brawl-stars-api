@@ -1,5 +1,8 @@
 from fastapi import FastAPI, HTTPException, Query
 import db
+from pydantic import BaseModel
+import poller
+import requests
 
 app = FastAPI(title="Brawl Stars stats API") # Create application object (map with routing table)
 
@@ -171,8 +174,30 @@ def get_battles(tag: str, limit: int = Query(25, ge=1, le=200), offset: int = Qu
                          -- at once
     """, (tag, limit, offset)).fetchall()
     conn.close()
-
     return [dict(row) for row in rows]
+
+# Shape of the POST /players request body. FastAPI validates incoming JSON
+# against this and returns a 422 if it doesn't match.
+class PlayerRegistration(BaseModel):
+    tag: str
+    chat_id: str | None = None
+
+# Registers a player for tracking. Checks the tag exists upstream first, so a
+# typo doesn't create a row the poller then fails on every cycle.
+@app.post("/players", status_code=201)
+def register_player(body: PlayerRegistration):
+    tag = _normalise(body.tag)
+
+    try:
+        player_data = poller.fetch_player(tag)
+    except requests.HTTPError as e:
+        if e.response is not None and e.response.status_code == 404:
+            raise HTTPException(status_code=404, detail="no such player")
+        raise HTTPException(status_code=502, detail="upstream API unavailable")
+    
+    db.add_player(tag, player_data.get("name"), body.chat_id)
+    return {"tag": tag, "name": player_data.get("name")}
+
 @app.delete("/players/{tag}", status_code=204)
 def unsubscribe_player(tag: str):
     tag = _normalise(tag)
