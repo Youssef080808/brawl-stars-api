@@ -33,6 +33,31 @@ jobs:
                 context: . # Tells where Dockerfile and code are located
                 push: True # Pushes Image after building
                 tags: ghcr.io/youssef080808/brawl-api:latest # Full name/address image will be given once uploaded
+    
+    deploy:
+        needs: build
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Configure AWS Credentials
+              uses: aws-actions/configure-aws-credentials@v4
+              with:
+                aws-access-key-id: ${{secrets.AWS_ACCESS_ID}}
+                aws-secret-access-key: ${{secrets.AWS_SECRET_KEY}}
+                aws-region: eu-north-1
+            
+            - name: Deploy new image to EC2 via SSM
+              run: | 
+                aws ssm send-command \
+                    --instance-ids "${{secrets.EC2_INSTANCE_ID}}" \
+                    --document-name "AWS-RunShellScript" \
+                    --parameters 'commands=[
+                        "docker pull ghcr.io/youssef080808/brawl-api:latest",
+                        "docker rm -f brawl-api",
+                        "docker run -d --name brawl-api --restart unless-stopped -p 127.0.0.1:8000:8000 --env-file /etc/brawl-api.env -v /home/ec2-user/brawl-data:/data ghcr.io/youssef080808/brawl-api:latest"
+                    ]'
+
+
 
 
     
