@@ -6,7 +6,7 @@ Supercell's API only returns a snapshot: current trophies, and roughly the last 
 
 Built to be used by a [Telegram bot](https://github.com/Youssef080808/Telegram-py-bot), but usable on its own.
 
-**Status:** in development. Collection works end to end, and all read endpoints are built. Registering a player still has to be done directly against the database.
+**Status:** deployed and running on AWS EC2, polling every 30 minutes.
 
 ## Endpoints
 
@@ -17,10 +17,11 @@ GET    /players/{tag}/record     Win/draw/loss counts, filtered
 GET    /players/{tag}/brawlers   Per-brawler breakdown, ranked
 GET    /players/{tag}/trophies   Trophy and ranked elo history
 GET    /players/{tag}/battles    Stored battles, paginated
+POST   /players                  Register a player for tracking
 DELETE /players/{tag}            Stop tracking
 ```
 
-Still to build: `POST /players`, to register a player for tracking.
+`POST /players` verifies the tag against the upstream API before storing it, so a typo doesn't create a row the poller then fails on every cycle. A 404 upstream is passed through as a 404; anything else becomes a 502, since the failure is a dependency's rather than this service's.
 
 Interactive documentation is generated automatically at `/docs`.
 
@@ -73,6 +74,29 @@ uvicorn api:app --reload
 
 The poller runs once and exits rather than looping, so scheduling stays outside the program — cron or a container schedule, rather than a sleep in the code.
 
+## Deployment
+
+Every push to `main` builds the image and publishes it to GitHub Container Registry. On the EC2 instance, two containers run from that same image:
+
+```bash
+# The API, long-running
+docker run -d --name brawl-api --restart unless-stopped \
+  -p 127.0.0.1:8000:8000 \
+  -e BRAWL_API_KEY="..." \
+  -v /home/ec2-user/brawl-data:/data \
+  ghcr.io/youssef080808/brawl-api:latest
+
+# The poller, run by cron every 30 minutes and removed when it exits
+docker run --rm \
+  -e BRAWL_API_KEY="..." \
+  -v /home/ec2-user/brawl-data:/data \
+  ghcr.io/youssef080808/brawl-api:latest python3 poller.py
+```
+
+The image's default command is the API; the poller overrides it. Both mount the same host directory, which is how they share a database despite being separate containers.
+
+The port is bound to `127.0.0.1` rather than all interfaces, so the API is reachable only from the instance itself. Nothing is exposed publicly and no inbound firewall rule was needed — the only consumer is a bot running on the same host. Making it public would mean a reverse proxy, TLS, and rate limiting, which isn't warranted for a single internal caller.
+
 ## Project structure
 
 - `config.py` — settings and secrets, read from the environment
@@ -80,6 +104,8 @@ The poller runs once and exits rather than looping, so scheduling stays outside 
 - `poller.py` — fetches from the upstream API and stores results
 - `parser.py` — turns raw battle JSON into rows
 - `api.py` — HTTP endpoints
+- `Dockerfile` — the image both containers run from
+- `.github/workflows/build.yml` — builds and publishes on every push to `main`
 
 ## Known limitations
 
