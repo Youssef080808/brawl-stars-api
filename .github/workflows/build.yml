@@ -1,0 +1,43 @@
+# Workflow name
+name: Build and Push Docker Image
+
+# Runs workflows whenever a commit to the main branch occurs
+on:
+    push:
+        branches: [main]
+
+# The workflow jobs
+jobs:
+    build:
+
+        runs-on: ubuntu-latest
+
+        permissions:
+            contents: read # gives permission to read github repo
+            packages: write # gives permission to upload/publish the docker image
+
+        steps:
+            - name: Check out Repo
+              uses: actions/checkout@v4
+
+            - name: Login to GitHub container registry
+              uses: docker/login-action@v3
+              with:
+                registry: ghcr.io # Storage server for Docker images so its accesible from anywhere
+                username: ${{github.actor}} # Holds github username of whoever triggered the run
+                password: ${{secrets.GITHUB_TOKEN}} # auto-generated token by GH every single workflow run then destroyed after
+
+            - name: Build and Push Docker Image
+              uses: docker/build-push-action@v6 # Builds and Docker image and pushes it into a registry
+              with:
+                context: . # Tells where Dockerfile and code are located
+                push: True # Pushes Image after building
+                tags: ghcr.io/youssef080808/brawl-api:latest # Full name/address image will be given once uploaded
+
+
+    
+    
+
+        
+
+
