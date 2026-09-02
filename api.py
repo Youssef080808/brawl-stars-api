@@ -6,6 +6,8 @@ import requests
 
 app = FastAPI(title="Brawl Stars stats API") # Create application object (map with routing table)
 
+db.db_init()
+
 # Checks that whole stack is working
 @app.get("/health")
 def health():

@@ -136,6 +136,6 @@ def mark_polled(tag):
     conn.close()
 
 # Runs db_init() when you run file directly
-if __name__ == "__main__":
-    db_init()
-    print(f"Database inialised at {DB_PATH}")
+#if __name__ == "__main__":
+#    db_init()
+#    print(f"Database inialised at {DB_PATH}")

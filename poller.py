@@ -61,6 +61,7 @@ def poll_all(delay=0.5):
 
 # Runs if file is run directly
 if __name__ == "__main__":
+    db.db_init()
     poll_all()
 
      
