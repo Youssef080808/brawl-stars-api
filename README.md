@@ -76,24 +76,30 @@ The poller runs once and exits rather than looping, so scheduling stays outside 
 
 ## Deployment
 
-Every push to `main` builds the image and publishes it to GitHub Container Registry. On the EC2 instance, two containers run from that same image:
+Every push to `main` builds the image, publishes it to GitHub Container Registry, and redeploys the running container via AWS Systems Manager — no SSH keys in CI and no inbound ports opened.
+
+The instance itself is provisioned by the [Telegram bot repository's Terraform](https://github.com/Youssef080808/Telegram-py-bot), since both services share one host. Its `user_data` script creates this service's data directory and token file, starts the container, and installs the poller's cron entry, so a fresh instance comes up with both services running.
+
+Two containers run from the same image:
 
 ```bash
 # The API, long-running
 docker run -d --name brawl-api --restart unless-stopped \
   -p 127.0.0.1:8000:8000 \
-  -e BRAWL_API_KEY="..." \
+  --env-file /etc/brawl-api.env \
   -v /home/ec2-user/brawl-data:/data \
   ghcr.io/youssef080808/brawl-api:latest
 
 # The poller, run by cron every 30 minutes and removed when it exits
 docker run --rm \
-  -e BRAWL_API_KEY="..." \
+  --env-file /etc/brawl-api.env \
   -v /home/ec2-user/brawl-data:/data \
   ghcr.io/youssef080808/brawl-api:latest python3 poller.py
 ```
 
 The image's default command is the API; the poller overrides it. Both mount the same host directory, which is how they share a database despite being separate containers.
+
+The API key is read from a root-only file written at provisioning time rather than passed on the command line, so it never appears in shell history, workflow definitions, or SSM command logs.
 
 The port is bound to `127.0.0.1` rather than all interfaces, so the API is reachable only from the instance itself. Nothing is exposed publicly and no inbound firewall rule was needed — the only consumer is a bot running on the same host. Making it public would mean a reverse proxy, TLS, and rate limiting, which isn't warranted for a single internal caller.
 
@@ -113,3 +119,4 @@ The port is bound to `127.0.0.1` rather than all interfaces, so the API is reach
 - A player who plays more than ~25 matches between polls will have gaps.
 - A poll that fails partway leaves a snapshot written but no battles, since the two are stored separately.
 - Narrow filters can produce records over very few matches, so counts are always returned alongside.
+- Stored data lives on the instance's root volume, so replacing the instance means copying the database across by hand.
