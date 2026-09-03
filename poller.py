@@ -3,7 +3,7 @@ from config import API_PROXY, API_KEY
 import time
 import db
 import parser
-
+# Test
 # Fetches a player's profile: name, trophies, ranked elo, brawler stats
 def fetch_player(tag):
     return _get(f"/players/{_encode(tag)}")
