@@ -205,4 +205,16 @@ def unsubscribe_player(tag: str):
     tag = _normalise(tag)
     db.remove_player(tag)
 
+@app.get("/players")
+def get_players(chat_id: str | None = None):
+    conn = db.get_connection()
+    if not chat_id:
+        rows = conn.execute("SELECT tag, name, added_at, last_polled FROM players").fetchall()
+    else:
+        rows = conn.execute("SELECT tag, name, added_at, last_polled FROM players WHERE chat_id = ?", (chat_id,)).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+
 
