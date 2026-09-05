@@ -120,3 +120,4 @@ The port is bound to `127.0.0.1` rather than all interfaces, so the API is reach
 - A poll that fails partway leaves a snapshot written but no battles, since the two are stored separately.
 - Narrow filters can produce records over very few matches, so counts are always returned alongside.
 - Stored data lives on the instance's root volume, so replacing the instance means copying the database across by hand.
+# ElderApp
